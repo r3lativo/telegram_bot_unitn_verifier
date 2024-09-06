@@ -13,8 +13,10 @@ from dotenv import load_dotenv
 import os
 import logging
 import time
+from datetime import datetime, timedelta
 
-from email_verification import send_seq, check_seq
+from email_verification import send_seq, check_seq, validate_email
+from utils import new_attempt_time_check
 
 # The token to the chatbot
 load_dotenv()
@@ -81,6 +83,7 @@ logger = logging.getLogger(__name__)
 TYPING_EMAIL, VERIFYING_EMAIL, VALIDATING_CODE, DONE = range(4)
 
 EMAIL_ADDRESS = ""
+max_attempts = 3
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -88,7 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     reply_text = f"Hello, {user.username}!\n"
 
-    # If there is already a chat with the user
+    # If there is already a chat log with the user
     if context.user_data:
         if context.user_data["validated"] == True:  # commented until i don't create the "verification"
             reply_text += (
@@ -97,15 +100,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             # Reply and end conversation
             await update.message.reply_text(reply_text)
             return ConversationHandler.END
+        
+        if context.user_data["time_of_fail"] != None:
+            new_attempt_state, retry_time = new_attempt_time_check(context.user_data["time_of_fail"])
+            # If the check fails
+            if new_attempt_state == False:
+                await update.message.reply_text(
+                    f"Less than 24 hours have passed. Please retry on {retry_time}"
+                )
+                return ConversationHandler.END
+
         else:
             reply_text += (
-                "What's up?"
+                "Let' try to validate your email again. What is your institutional email?"
             )
             await update.message.reply_text(reply_text)
             return TYPING_EMAIL
 
     # If there is no data on the user
     else:
+        # Create the number of attempts left
+        context.user_data["attempts_left"] = max_attempts
+        context.user_data["time_of_fail"] = None
         reply_text += (
             "To access the rest of the group topics, let's verify your email.\n"
             "Please enter your institutional email (ending with 'unitn it')"
@@ -117,57 +133,86 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def verify_mail(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Stores the email if valid, and sends the verification code"""
     text = update.message.text
     EMAIL_ADDRESS = text
     # Store the email address
     context.user_data["email_address"] = text.lower()
 
-    # TODO VALIDATING ALGORITHM HERE
-    # TODO VERIFYING ALGORITHM HERE
-    # TODO CASES WHETHER IT IS VALID OR NOT
+    # VALIDATING ALGORITHM HERE
+    if validate_email(EMAIL_ADDRESS) == True:
+        await update.message.reply_text(
+            f"{text} is a valid unitn email"
+        )
+        time.sleep(1)
 
-    await update.message.reply_text(
-        f"{text} seems like a good email!"
-    )
-    time.sleep(1)
+        # VERIFYING ALGORITHM HERE
+        global SEQUENCE
+        SEQUENCE = send_seq(debug=True, sandbox=True)#, email_address=EMAIL_ADDRESS)
 
-    global SEQUENCE
-    SEQUENCE = send_seq()#email_address=EMAIL_ADDRESS, terminal=False)
-    print(f"SEQUENCE: {SEQUENCE}")
-
-    await update.message.reply_text(
-        f"A verification code has been sent to {EMAIL_ADDRESS}! Please insert it here to complete verification."
-    )
-    return VERIFYING_EMAIL
+        await update.message.reply_text(
+            f"A verification code has been sent to {EMAIL_ADDRESS}! Please insert it here to complete verification."
+        )
+        return VERIFYING_EMAIL
+    else:
+        await update.message.reply_text(
+            f"{text} is not a valid unitn email."
+        )
+        time.sleep(1)
+        await update.message.reply_text(
+            f"Please insert an email in the format yourname@[studenti.]unitn.it"
+        )
+        return TYPING_EMAIL
 
 
 async def code_validation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = update.message.text
-    print(f"code: {text}")
+    
+    # If the user already failed once
+    if context.user_data["time_of_fail"] != None:
+        stored_time = context.user_data["time_of_fail"]
+        new_attempt_state, retry_time = new_attempt_time_check(stored_time)
+        # If the check fails
+        if new_attempt_state == False:
+            await update.message.reply_text(
+                f"Less than 24 hours have passed. Please retry on {retry_time}"
+            )
+            return ConversationHandler.END
 
-    if len(text) != 5:
+    input_code = update.message.text
+    print(f"code: {input_code}")
+
+    if len(input_code) != 5:
         await update.message.reply_text(
             f"you need a {len(SEQUENCE)}-digit code"
         )
         return VERIFYING_EMAIL
 
-    state = check_seq(seq=SEQUENCE, terminal=False, telegram_code=text)
+    state_check = check_seq(seq=SEQUENCE, terminal=False, telegram_code=input_code)
     
-    if state == True:
+    if state_check == True:
         await update.message.reply_text(
             "The code is correct!"
         )
         context.user_data["validated"] = True
 
-        # TODO CREATE INVITE LINK TO GROUP
+        # TODO SEND TO INVITE LINK TO GROUP CREATION
         return DONE
+    
+    elif state_check == False and context.user_data["attempts_left"] > 0:
+        context.user_data["validated"] = False
+        context.user_data["attempts_left"] -= 1
+        await update.message.reply_text(
+            f"The code {input_code} is not correct.\nYou have {context.user_data["attempts_left"]} attempts left"
+        )
+        return VERIFYING_EMAIL
+    
     else:
         await update.message.reply_text(
-            "The code is wrong, retry later"
+            f"The code {input_code} is not correct.\n No more attempts left. Please try again in 24 hours."
         )
+        context.user_data["time_of_fail"] = datetime.now()
         context.user_data["validated"] = False
         return ConversationHandler.END
-    return
      
 
 
