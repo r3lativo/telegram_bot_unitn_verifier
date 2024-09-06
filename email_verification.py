@@ -1,32 +1,42 @@
 import mailtrap as mt
 from dotenv import load_dotenv
-import os, random
-from utils import create_html_text, create_sandbox_text
-import re
-import requests
+from random import randrange
+from utils import (
+    create_html_text,
+    create_sandbox_text
+)
+import re, os, requests
 
+#--------------------------------------------------------------------------------------------------
+
+MAIL_REGEX = r'[a-z0-9]+[\.\_]?[a-z0-9]+?@(\w+\.)?\w+\.\w+'
+UNITN_REGEX = r'[a-z0-9]+[\.\_]?[a-z0-9]+?@(\w+\.)?unitn\.it'
+SEQ_LENGHT = 5
+
+#--------------------------------------------------------------------------------------------------
 
 def validate_email(address):
-    unitn_regex = r'^[a-z0-9]+\.?[a-z0-9]+@(studenti\.)?unitn\.it$'
+    """Checks whether it resembles an email"""
+    return True if re.match(MAIL_REGEX, address) else False
 
-    if re.match(unitn_regex, address):
-        return True
-    else:
-        return False
+
+def validate_unitn_domain(address):
+    """Checks whether the email domain is unitn"""
+    UNITN_REGEX = r'[a-z0-9]+[\.\_]?[a-z0-9]+?@(\w+\.)?unitn\.it'
+    return True if re.match(UNITN_REGEX, address) else False
 
 
 # Function to create a random 5-digit verification code.
 def create_seq():
-    seq = ""  
-    for i in range(5):  
-        seq += str(random.randrange(0, 9))  
+    # A random sequence
+    seq = ''.join(str(randrange(0, 9)) for _ in range(SEQ_LENGHT))
     #print("verification code created") 
     return seq
 
 
 # Function to check if the user input matches the generated verification code.
-def check_seq(seq, terminal=True, telegram_code=None):
-    if terminal == True:
+def check_seq(seq, telegram_code=None):
+    if telegram_code == None:
         while True:
             user_input = input("enter your code here: ")  
             if len(user_input) != len(seq):
@@ -42,10 +52,7 @@ def check_seq(seq, terminal=True, telegram_code=None):
     
     # Telegram
     else:
-        if telegram_code == seq:
-            return True
-        else:
-            return False
+        return True if telegram_code == seq else False
 
 
 def send_seq(email_address="r3lativo@outlook.it", debug=True, sandbox=True):

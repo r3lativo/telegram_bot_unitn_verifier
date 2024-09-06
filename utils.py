@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+#--------------------------------------------------------------------------------------------------
+
 def new_attempt_time_check(datetime_stored):
     date_time_now = datetime.now()
     time_difference = abs(date_time_now - datetime_stored)
@@ -17,6 +19,7 @@ def new_attempt_time_check(datetime_stored):
         #print(f"Try again on {retry_time}")
         new_attempt_state = False
     return new_attempt_state, retry_time
+
 
 def create_sandbox_text(seq):
     text_from = "\"from\":{\"email\":\"mailtrap@example.com\",\"name\":\"Mailtrap Test\"}"
@@ -90,10 +93,6 @@ def create_html_text(seq):
     """
     return message
 
-    
-    
-def example():
-    datetime_stored = datetime(year=2024, month=9, day=6, hour=10, minute=0, second=0)
-    new_attempt_time_check(datetime_stored)
 
-#example()
+#datetime_stored = datetime(year=2024, month=9, day=6, hour=10, minute=0, second=0)
+#new_attempt_time_check(datetime_stored)
